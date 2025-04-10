@@ -16,6 +16,11 @@ public:
         this->declare_parameter<std::string>("target_frame", "tibia_body");
         this->declare_parameter<bool>("debug_mode", false);
 
+        // Get parameters
+        force_frame_ = this->get_parameter("force_frame").as_string();
+        target_frame_ = this->get_parameter("target_frame").as_string(); 
+        debug_mode_ = this->get_parameter("debug_mode").as_bool();
+
         // Create frame listener
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -28,6 +33,12 @@ public:
     }
 
 private: 
+
+    // Declare parameters
+    std::string force_frame_; 
+    std::string target_frame_;
+    bool debug_mode_; 
+
     // Declare subscriber and publisher
     rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr force_sub_; 
     rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr tf_sub_; 
@@ -43,18 +54,13 @@ private:
     // Force callback that is executed when a force message is received
     void force_callback(const std::shared_ptr<geometry_msgs::msg::WrenchStamped> msg) {
 
-        // RCLCPP_INFO(this->get_logger(), "Received Message %i", count++);
-        // Get frames
-        std::string force_frame = "tibia_body";
-        std::string target_frame = "optitrack";
-
         // Get latest transformation
         geometry_msgs::msg::TransformStamped transform_stamped; 
         try {
-            transform_stamped = tf_buffer_->lookupTransform(target_frame, force_frame, tf2::TimePointZero);
+            transform_stamped = tf_buffer_->lookupTransform(target_frame_, force_frame_, tf2::TimePointZero);
         }
         catch (const tf2::TransformException & ex) {
-            RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s, %s", force_frame.c_str(), target_frame.c_str(), ex.what());
+            RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s, %s", force_frame_.c_str(), target_frame_.c_str(), ex.what());
             return;
         }
 
@@ -67,9 +73,17 @@ private:
             transform_stamped.transform.rotation.w);
         tf2::Vector3 transformed_force = tf2::quatRotate(q, force_vector);
 
+        // Debug logging
+        if (debug_mode_) {
+            RCLCPP_INFO(this->get_logger(), "Original Force: [%f, %f, %f]", 
+                        force_vector.x(), force_vector.y(), force_vector.z());
+            RCLCPP_INFO(this->get_logger(), "Transformed Force: [%f, %f, %f]", 
+                        transformed_force.x(), transformed_force.y(), transformed_force.z());
+        }
+
         // Create visualization marker
         visualization_msgs::msg::Marker marker; 
-        marker.header.frame_id = target_frame;
+        marker.header.frame_id = target_frame_;
         marker.header.stamp = this->now();
         marker.ns = "force_visualization";
         marker.id = 0;
